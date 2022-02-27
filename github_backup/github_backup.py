@@ -22,6 +22,7 @@ try: #PY3
 except ImportError:
     from ConfigParser import SafeConfigParser as ConfigParser
 from argparse import ArgumentParser
+from datetime import datetime
 
 import requests
 import github
@@ -174,7 +175,7 @@ def init_parser():
     parser.add_argument("-o", "--organization", help="Backup Organizational repositories", metavar="ORG")
     parser.add_argument("-A", "--account", help="Backup account data", action='store_true')
     parser.add_argument("--s3-bucket-name", help="S3 Object storage bucket name", type=str)
-    parser.add_argument("--s3-path-prefix", help="S3 Object storage path prefix", default="")
+    parser.add_argument("--s3-path-prefix", help="S3 Object storage path prefix. It's support datetime formating strings.", default="")
     parser.add_argument("--s3-endpoint-url", help="S3 Object storage endpoint url", type=str)
     parser.add_argument('--all',
                         action='store_true',
@@ -504,6 +505,7 @@ class S3ObjectStorage(object):
         backupdir = self.args.backupdir
         bucket_name = self.args.s3_bucket_name
         path_prefix = self.args.s3_path_prefix
+        now = datetime.now()
 
         LOGGER.info("Uploading into remote storage")
 
@@ -511,7 +513,7 @@ class S3ObjectStorage(object):
             for filename in files:
                 local_path = os.path.join(root, filename)
                 remote_path = os.path.relpath(local_path, backupdir)
-                remote_path = os.path.join(path_prefix, os.path.relpath(local_path, backupdir))
+                remote_path = os.path.join(now.strftime(path_prefix), os.path.relpath(local_path, backupdir))
 
                 LOGGER.debug(f"Uploading {local_path} to s3://{bucket_name}/{remote_path}")
                 self.client.upload_file(local_path, bucket_name, remote_path)

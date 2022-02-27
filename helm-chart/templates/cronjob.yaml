@@ -1,0 +1,92 @@
+{{- if semverCompare "<=1.20-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: batch/v1beta1
+{{- else }}
+apiVersion: batch/v1
+{{- end }}
+kind: CronJob
+metadata:
+  name: {{ include "github-backup.fullname" . }}
+  labels:
+    {{- include "github-backup.labels" . | nindent 4 }}
+spec:
+  schedule: "{{ .Values.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          labels:
+            {{- include "github-backup.selectorLabels" . | nindent 12 }}
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "github-backup.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ .Chart.Name }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args:
+                {{- with .Values.args }}
+                  {{- toYaml . | nindent 16 }}
+                {{- end }}
+                {{- if .Values.token }}
+                - --password=$(GITHUB_TOKEN)
+                {{- end }}
+                - --s3-bucket-name={{ .Values.s3.bucket }}
+                - --s3-path-prefix={{ .Values.s3.prefix }}
+                {{- if .Values.s3.endpointURL }}
+                - --s3-endpoint-url={{ .Values.s3.endpointURL }}
+                {{- end }}
+              {{- if .Values.token }}
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "github-backup.fullname" . }}
+                      key: token
+              {{- end }}
+              volumeMounts:
+              - name: aws
+                mountPath: /root/.aws
+              {{- if .Values.id_rsa }}
+              - name: id-rsa
+                mountPath: /root/.ssh/id_rsa
+                subPath: id_rsa
+              {{- end }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          restartPolicy: Never
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+          - name: aws
+            secret:
+              secretName: {{ include "github-backup.fullname" . }}-aws
+          {{- if .Values.id_rsa }}
+          - name: id-rsa
+            secret:
+              secretName: {{ include "github-backup.fullname" . }}
+              defaultMode: 384
+              items:
+              - key: id_rsa
+                path: id_rsa
+          {{- end }}
